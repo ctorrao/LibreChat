@@ -1,0 +1,266 @@
+openapi: 3.0.1
+info:
+  title: LibreChat Code Runner API
+  description: |
+    API specification for LibreChat's Code Runner service (execute_code tool).
+    This service allows secure execution of Python code in sandboxed environments,
+    with file upload/download capabilities and session management.
+    
+    The Code Runner API is hosted at api.librechat.ai and provides:
+    - Secure code execution in isolated environments
+    - File upload and management within execution sessions
+    - Output retrieval (text logs and generated files)
+    - Session-based file persistence (24-hour retention)
+  version: '1.0'
+  contact:
+    name: LibreChat
+    url: https://github.com/danny-avila/LibreChat
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.librechat.ai
+    description: LibreChat Code Runner Production API
+
+paths:
+  /upload:
+    post:
+      operationId: uploadFile
+      summary: Upload file to code execution environment
+      description: |
+        Uploads a file to a code execution session. If no entity_id is provided,
+        a new session is created. Files are available in the execution environment
+        at /mnt/data/{filename}.
+      tags:
+        - Files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload (max 150 MB)
+                entity_id:
+                  type: string
+                  description: Optional entity ID to associate files with a specific session
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - session_id
+                  - files
+                properties:
+                  message:
+                    type: string
+                    enum: [success]
+                    description: Status message
+                  session_id:
+                    type: string
+                    description: The session ID for this execution environment
+                    example: "abc123def456"
+                  files:
+                    type: array
+                    description: Array of uploaded files
+                    items:
+                      type: object
+                      required:
+                        - fileId
+                        - filename
+                      properties:
+                        fileId:
+                          type: string
+                          description: Unique identifier for the file
+                          example: "file789xyz"
+                        filename:
+                          type: string
+                          description: Name of the uploaded file
+                          example: "data.csv"
+        '400':
+          description: Bad request - invalid file or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Payload too large - file exceeds 150 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /download/{session_id}/{file_id}:
+    get:
+      operationId: downloadFile
+      summary: Download file from code execution environment
+      description: |
+        Downloads a file from a code execution session. Files are available for
+        approximately 24 hours after session creation.
+      tags:
+        - Files
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The session ID
+          example: "abc123def456"
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The file ID
+          example: "file789xyz"
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: File not found or session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/{session_id}:
+    get:
+      operationId: getSessionFiles
+      summary: List files in a session
+      description: |
+        Retrieves information about files in a code execution session.
+        Can return summary or detailed information based on the detail parameter.
+      tags:
+        - Files
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The session ID
+          example: "abc123def456"
+        - name: detail
+          in: query
+          schema:
+            type: string
+            enum: [summary, full]
+            default: summary
+          description: Level of detail to return
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+          description: Optional entity ID to filter files
+      responses:
+        '200':
+          description: List of files in the session
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: File path in the session
+                      example: "abc123def456/file789xyz"
+                    lastModified:
+                      type: string
+                      format: date-time
+                      description: ISO 8601 timestamp of last modification
+                      example: "2025-10-18T12:00:00Z"
+                    size:
+                      type: integer
+                      description: File size in bytes (only in detailed response)
+                    type:
+                      type: string
+                      description: MIME type (only in detailed response)
+        '404':
+          description: Session not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+              description: Human-readable error message
+            code:
+              type: string
+              description: Error code identifier
+            details:
+              type: object
+              description: Additional error details
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        LibreChat Code Runner API key. Configured via LIBRECHAT_CODE_API_KEY
+        environment variable in LibreChat.
+    UserIdHeader:
+      type: apiKey
+      in: header
+      name: User-Id
+      description: |
+        User identifier header sent by LibreChat for tracking and permissions.
+        This is automatically included by the LibreChat client.
+
+security:
+  - ApiKeyAuth: []
+    UserIdHeader: []
+
+tags:
+  - name: Files
+    description: File upload, download, and management operations for code execution sessions
+
