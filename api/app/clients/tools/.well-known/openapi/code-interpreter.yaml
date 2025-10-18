@@ -1,0 +1,1072 @@
+openapi: 3.0.1
+info:
+  title: Code Interpreter API
+  description: |
+    OpenAI Assistants API with Code Interpreter capability. This API allows assistants to write and run Python code in a sandboxed execution environment, 
+    process files with various data and formatting, and generate files (e.g., graphs, CSVs) as output.
+    
+    The Code Interpreter tool can process files with diverse data and formatting, and generate files like graphs or CSVs as output.
+    This specification documents how LibreChat integrates with the OpenAI Assistants API to enable code interpretation capabilities.
+  version: 'v2'
+  contact:
+    name: OpenAI API Support
+    url: https://platform.openai.com/docs/assistants/tools/code-interpreter
+
+servers:
+  - url: https://api.openai.com/v1
+    description: OpenAI Production API
+
+security:
+  - BearerAuth: []
+
+paths:
+  /threads:
+    post:
+      operationId: createThread
+      summary: Create a new thread
+      description: Creates a thread to which messages can be added. Threads are used to maintain conversation context for the assistant.
+      tags:
+        - Threads
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: A list of messages to start the thread with.
+                  items:
+                    $ref: '#/components/schemas/MessageInput'
+                metadata:
+                  type: object
+                  description: Set of key-value pairs that can be attached to the thread.
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Thread created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+
+  /threads/{thread_id}/messages:
+    post:
+      operationId: createMessage
+      summary: Create a message in a thread
+      description: Add a message to a thread. This is the primary way to provide user input to the assistant.
+      tags:
+        - Messages
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread to add the message to
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageInput'
+      responses:
+        '200':
+          description: Message created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadMessage'
+
+    get:
+      operationId: listMessages
+      summary: List messages in a thread
+      description: Returns a list of messages for a given thread.
+      tags:
+        - Messages
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread the messages belong to
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: A limit on the number of objects to be returned
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: order
+          in: query
+          description: Sort order by the created_at timestamp
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: after
+          in: query
+          description: A cursor for use in pagination
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: A cursor for use in pagination
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageList'
+
+  /threads/{thread_id}/runs:
+    post:
+      operationId: createRun
+      summary: Create a run for the assistant with code interpreter
+      description: |
+        Creates a run that executes an assistant on a thread. When code_interpreter tool is enabled,
+        the assistant can write and execute Python code, process uploaded files, and generate output files.
+      tags:
+        - Runs
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread to run
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunInput'
+      responses:
+        '200':
+          description: Run created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /threads/{thread_id}/runs/{run_id}:
+    get:
+      operationId: retrieveRun
+      summary: Retrieve a run
+      description: Retrieves a run to check its status and other details.
+      tags:
+        - Runs
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread the run belongs to
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          description: The ID of the run to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /threads/{thread_id}/runs/{run_id}/cancel:
+    post:
+      operationId: cancelRun
+      summary: Cancel a run
+      description: Cancels a run that is in_progress.
+      tags:
+        - Runs
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread the run belongs to
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          description: The ID of the run to cancel
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /threads/{thread_id}/runs/{run_id}/steps:
+    get:
+      operationId: listRunSteps
+      summary: List run steps
+      description: |
+        Returns a list of run steps for a given run. Run steps represent the operations the assistant 
+        performed, including code_interpreter tool calls showing the Python code executed and its outputs.
+      tags:
+        - Run Steps
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread the run belongs to
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          description: The ID of the run to retrieve steps for
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: A limit on the number of objects to be returned
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: order
+          in: query
+          description: Sort order by the created_at timestamp
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: after
+          in: query
+          description: A cursor for use in pagination
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: A cursor for use in pagination
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of run steps
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStepList'
+
+  /threads/{thread_id}/runs/{run_id}/submit_tool_outputs:
+    post:
+      operationId: submitToolOutputs
+      summary: Submit tool outputs for a run requiring action
+      description: |
+        When a run has the status requires_action with required_action.type of submit_tool_outputs,
+        this endpoint can be used to submit the outputs from the tool calls. Used primarily for function tools,
+        not typically required for code_interpreter which executes autonomously.
+      tags:
+        - Runs
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: The ID of the thread the run belongs to
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          description: The ID of the run requiring action
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tool_outputs
+              properties:
+                tool_outputs:
+                  type: array
+                  description: A list of tool outputs for the tool calls
+                  items:
+                    type: object
+                    required:
+                      - tool_call_id
+                      - output
+                    properties:
+                      tool_call_id:
+                        type: string
+                        description: The ID of the tool call
+                      output:
+                        type: string
+                        description: The output of the tool call
+      responses:
+        '200':
+          description: Tool outputs submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /files:
+    post:
+      operationId: uploadFile
+      summary: Upload a file for use with code interpreter
+      description: |
+        Upload a file that can be used with code_interpreter. Files can be attached to messages
+        and the code interpreter can read and process them during execution.
+      tags:
+        - Files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - purpose
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload
+                purpose:
+                  type: string
+                  enum: [assistants]
+                  description: The purpose of the file (use 'assistants' for code interpreter)
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+
+  /files/{file_id}:
+    get:
+      operationId: retrieveFile
+      summary: Retrieve file information
+      description: Returns information about a specific file.
+      tags:
+        - Files
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The ID of the file to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+
+  /files/{file_id}/content:
+    get:
+      operationId: retrieveFileContent
+      summary: Download file content
+      description: |
+        Returns the contents of the specified file. Used to download output files 
+        generated by code_interpreter (e.g., images, CSV files, etc.).
+      tags:
+        - Files
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The ID of the file to download
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: OpenAI API Key in the format 'Bearer YOUR_API_KEY'
+
+  schemas:
+    Thread:
+      type: object
+      description: Represents a thread that contains messages
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the thread
+        object:
+          type: string
+          enum: [thread]
+          description: The object type, always 'thread'
+        created_at:
+          type: integer
+          description: Unix timestamp (in seconds) for when the thread was created
+        metadata:
+          type: object
+          description: Set of key-value pairs attached to the thread
+          additionalProperties:
+            type: string
+
+    MessageInput:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [user]
+          description: The role of the entity creating the message (always 'user' for input)
+        content:
+          type: string
+          description: The content of the message
+        file_ids:
+          type: array
+          description: |
+            A list of File IDs that the message should reference. Files must be uploaded using 
+            the File API with purpose='assistants'. Code interpreter can access these files.
+          items:
+            type: string
+          maxItems: 10
+        metadata:
+          type: object
+          description: Set of key-value pairs attached to the message
+          additionalProperties:
+            type: string
+
+    ThreadMessage:
+      type: object
+      description: Represents a message within a thread
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the message
+        object:
+          type: string
+          enum: [thread.message]
+          description: The object type, always 'thread.message'
+        created_at:
+          type: integer
+          description: Unix timestamp (in seconds) for when the message was created
+        thread_id:
+          type: string
+          description: The thread ID this message belongs to
+        role:
+          type: string
+          enum: [user, assistant]
+          description: The role of the entity that created the message
+        content:
+          type: array
+          description: The content of the message
+          items:
+            $ref: '#/components/schemas/MessageContent'
+        assistant_id:
+          type: string
+          nullable: true
+          description: If applicable, the ID of the assistant that authored this message
+        run_id:
+          type: string
+          nullable: true
+          description: If applicable, the ID of the run associated with this message
+        file_ids:
+          type: array
+          description: A list of file IDs associated with the message
+          items:
+            type: string
+        metadata:
+          type: object
+          description: Set of key-value pairs attached to the message
+          additionalProperties:
+            type: string
+
+    MessageContent:
+      oneOf:
+        - $ref: '#/components/schemas/TextContent'
+        - $ref: '#/components/schemas/ImageFileContent'
+      discriminator:
+        propertyName: type
+
+    TextContent:
+      type: object
+      required:
+        - type
+        - text
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: object
+          properties:
+            value:
+              type: string
+              description: The text content
+            annotations:
+              type: array
+              description: Annotations for citations, file references, etc.
+              items:
+                $ref: '#/components/schemas/Annotation'
+
+    ImageFileContent:
+      type: object
+      required:
+        - type
+        - image_file
+      properties:
+        type:
+          type: string
+          enum: [image_file]
+        image_file:
+          type: object
+          properties:
+            file_id:
+              type: string
+              description: The File ID of the image
+
+    Annotation:
+      oneOf:
+        - $ref: '#/components/schemas/FileCitationAnnotation'
+        - $ref: '#/components/schemas/FilePathAnnotation'
+      discriminator:
+        propertyName: type
+
+    FileCitationAnnotation:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [file_citation]
+        text:
+          type: string
+          description: The text in the message content that needs to be replaced
+        file_citation:
+          type: object
+          properties:
+            file_id:
+              type: string
+              description: The ID of the file that was cited
+            quote:
+              type: string
+              description: The specific quote from the file
+        start_index:
+          type: integer
+        end_index:
+          type: integer
+
+    FilePathAnnotation:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [file_path]
+        text:
+          type: string
+          description: The text in the message content that needs to be replaced
+        file_path:
+          type: object
+          properties:
+            file_id:
+              type: string
+              description: The ID of the file that was generated
+        start_index:
+          type: integer
+        end_index:
+          type: integer
+
+    MessageList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [list]
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreadMessage'
+        first_id:
+          type: string
+        last_id:
+          type: string
+        has_more:
+          type: boolean
+
+    RunInput:
+      type: object
+      required:
+        - assistant_id
+      properties:
+        assistant_id:
+          type: string
+          description: The ID of the assistant to use for this run
+        model:
+          type: string
+          description: The model to use (overrides the assistant's model)
+        instructions:
+          type: string
+          description: Override the default system instructions of the assistant
+        additional_instructions:
+          type: string
+          description: Appends additional instructions at the end
+        tools:
+          type: array
+          description: |
+            Override the tools the assistant can use. To enable code interpreter, include:
+            { "type": "code_interpreter" }
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/CodeInterpreterTool'
+              - $ref: '#/components/schemas/RetrievalTool'
+              - $ref: '#/components/schemas/FunctionTool'
+        metadata:
+          type: object
+          description: Set of key-value pairs attached to the run
+          additionalProperties:
+            type: string
+
+    CodeInterpreterTool:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [code_interpreter]
+          description: The type of tool. For code interpretation, use 'code_interpreter'
+
+    RetrievalTool:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [retrieval]
+          description: The type of tool for file search/retrieval
+
+    FunctionTool:
+      type: object
+      required:
+        - type
+        - function
+      properties:
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required:
+            - name
+            - description
+          properties:
+            name:
+              type: string
+              description: The name of the function
+            description:
+              type: string
+              description: A description of what the function does
+            parameters:
+              type: object
+              description: The parameters the function accepts (JSON Schema)
+
+    Run:
+      type: object
+      description: Represents an execution run on a thread
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the run
+        object:
+          type: string
+          enum: [thread.run]
+        created_at:
+          type: integer
+          description: Unix timestamp (in seconds) for when the run was created
+        thread_id:
+          type: string
+          description: The thread ID this run belongs to
+        assistant_id:
+          type: string
+          description: The assistant ID used for this run
+        status:
+          type: string
+          enum: [queued, in_progress, requires_action, cancelling, cancelled, failed, completed, expired]
+          description: The status of the run
+        required_action:
+          type: object
+          nullable: true
+          description: Details on the action required (if status is requires_action)
+          properties:
+            type:
+              type: string
+              enum: [submit_tool_outputs]
+            submit_tool_outputs:
+              type: object
+              properties:
+                tool_calls:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/RequiredToolCall'
+        last_error:
+          type: object
+          nullable: true
+          description: The last error associated with this run
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        expires_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp (in seconds) for when the run will expire
+        started_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp (in seconds) for when the run started
+        cancelled_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp (in seconds) for when the run was cancelled
+        failed_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp (in seconds) for when the run failed
+        completed_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp (in seconds) for when the run completed
+        model:
+          type: string
+          description: The model used for the run
+        instructions:
+          type: string
+          description: The instructions provided for the run
+        tools:
+          type: array
+          description: The list of tools enabled for the run
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/CodeInterpreterTool'
+              - $ref: '#/components/schemas/RetrievalTool'
+              - $ref: '#/components/schemas/FunctionTool'
+        file_ids:
+          type: array
+          description: The list of file IDs available to the run
+          items:
+            type: string
+        metadata:
+          type: object
+          description: Set of key-value pairs attached to the run
+          additionalProperties:
+            type: string
+
+    RequiredToolCall:
+      type: object
+      description: A tool call that requires action
+      properties:
+        id:
+          type: string
+          description: The ID of the tool call
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the function to call
+            arguments:
+              type: string
+              description: The arguments to call the function with (JSON string)
+
+    RunStepList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [list]
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunStep'
+        first_id:
+          type: string
+        last_id:
+          type: string
+        has_more:
+          type: boolean
+
+    RunStep:
+      type: object
+      description: |
+        Represents a step in a run. Steps show the operations the assistant performed,
+        including code_interpreter tool calls with Python code and outputs.
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the run step
+        object:
+          type: string
+          enum: [thread.run.step]
+        created_at:
+          type: integer
+          description: Unix timestamp (in seconds) for when the step was created
+        assistant_id:
+          type: string
+          description: The ID of the assistant
+        thread_id:
+          type: string
+          description: The ID of the thread
+        run_id:
+          type: string
+          description: The ID of the run this step belongs to
+        type:
+          type: string
+          enum: [message_creation, tool_calls]
+          description: The type of run step
+        status:
+          type: string
+          enum: [in_progress, cancelled, failed, completed, expired]
+          description: The status of the run step
+        step_details:
+          oneOf:
+            - $ref: '#/components/schemas/MessageCreationStepDetails'
+            - $ref: '#/components/schemas/ToolCallsStepDetails'
+        last_error:
+          type: object
+          nullable: true
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        expired_at:
+          type: integer
+          nullable: true
+        cancelled_at:
+          type: integer
+          nullable: true
+        failed_at:
+          type: integer
+          nullable: true
+        completed_at:
+          type: integer
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    MessageCreationStepDetails:
+      type: object
+      required:
+        - type
+        - message_creation
+      properties:
+        type:
+          type: string
+          enum: [message_creation]
+        message_creation:
+          type: object
+          properties:
+            message_id:
+              type: string
+              description: The ID of the message that was created
+
+    ToolCallsStepDetails:
+      type: object
+      required:
+        - type
+        - tool_calls
+      properties:
+        type:
+          type: string
+          enum: [tool_calls]
+        tool_calls:
+          type: array
+          description: An array of tool calls the assistant made
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/CodeInterpreterToolCall'
+              - $ref: '#/components/schemas/RetrievalToolCall'
+              - $ref: '#/components/schemas/FunctionToolCall'
+
+    CodeInterpreterToolCall:
+      type: object
+      description: Details of a code interpreter tool call
+      required:
+        - id
+        - type
+        - code_interpreter
+      properties:
+        id:
+          type: string
+          description: The ID of the tool call
+        type:
+          type: string
+          enum: [code_interpreter]
+        code_interpreter:
+          type: object
+          required:
+            - input
+            - outputs
+          properties:
+            input:
+              type: string
+              description: The Python code that was executed
+            outputs:
+              type: array
+              description: The outputs from the code execution
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/CodeInterpreterLogOutput'
+                  - $ref: '#/components/schemas/CodeInterpreterImageOutput'
+
+    CodeInterpreterLogOutput:
+      type: object
+      required:
+        - type
+        - logs
+      properties:
+        type:
+          type: string
+          enum: [logs]
+        logs:
+          type: string
+          description: Text output (stdout) from the code execution
+
+    CodeInterpreterImageOutput:
+      type: object
+      required:
+        - type
+        - image
+      properties:
+        type:
+          type: string
+          enum: [image]
+        image:
+          type: object
+          required:
+            - file_id
+          properties:
+            file_id:
+              type: string
+              description: The ID of the generated image file
+
+    RetrievalToolCall:
+      type: object
+      required:
+        - id
+        - type
+        - retrieval
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [retrieval]
+        retrieval:
+          type: object
+          description: Retrieval tool call details (currently an empty object)
+
+    FunctionToolCall:
+      type: object
+      required:
+        - id
+        - type
+        - function
+      properties:
+        id:
+          type: string
+          description: The ID of the tool call
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required:
+            - name
+            - arguments
+            - output
+          properties:
+            name:
+              type: string
+              description: The name of the function that was called
+            arguments:
+              type: string
+              description: The arguments passed to the function (JSON string)
+            output:
+              type: string
+              nullable: true
+              description: The output of the function call
+
+    File:
+      type: object
+      description: Represents a file uploaded to OpenAI
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the file
+        object:
+          type: string
+          enum: [file]
+        bytes:
+          type: integer
+          description: The size of the file in bytes
+        created_at:
+          type: integer
+          description: Unix timestamp (in seconds) for when the file was created
+        filename:
+          type: string
+          description: The name of the file
+        purpose:
+          type: string
+          enum: [assistants, assistants_output]
+          description: The purpose of the file
+        status:
+          type: string
+          enum: [uploaded, processed, error]
+          description: The status of the file
+        status_details:
+          type: string
+          nullable: true
+          description: Additional details about the file status
+
+tags:
+  - name: Threads
+    description: Operations for managing conversation threads
+  - name: Messages
+    description: Operations for managing messages within threads
+  - name: Runs
+    description: Operations for executing assistant runs with code interpreter
+  - name: Run Steps
+    description: Operations for retrieving detailed run execution steps
+  - name: Files
+    description: Operations for managing files used with code interpreter
