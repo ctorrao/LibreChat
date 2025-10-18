@@ -128,6 +128,71 @@ User-Agent: LibreChat/1.0
 ]
 ```
 
+### 4. Execute Code
+
+**Endpoint:** `POST https://api.librechat.ai/exec`
+
+**Purpose:** Execute Python code in a sandboxed environment with access to uploaded files.
+
+**Request:**
+```http
+POST /exec HTTP/1.1
+Host: api.librechat.ai
+X-API-Key: your-api-key
+User-Id: user-identifier
+Content-Type: application/json
+
+{
+  "code": "import pandas as pd\ndf = pd.read_csv('/mnt/data/data.csv')\nprint(f'Shape: {df.shape}')",
+  "session_id": "abc123def456",
+  "timeout": 30
+}
+```
+
+**Request Body:**
+- `code` (required): Python code to execute
+- `session_id` (optional): Session ID to access uploaded files
+- `timeout` (optional): Execution timeout in seconds
+
+**Response:**
+```json
+{
+  "status": "success",
+  "stdout": "Shape: (100, 5)\n",
+  "stderr": "",
+  "files": [
+    {
+      "fileId": "output123",
+      "filename": "plot.png",
+      "path": "/mnt/data/plot.png"
+    }
+  ],
+  "session_id": "abc123def456",
+  "execution_time": 1.234
+}
+```
+
+**Response Fields:**
+- `status`: `success` or `error`
+- `stdout`: Standard output from code execution
+- `stderr`: Standard error from code execution
+- `files`: Array of files generated during execution
+- `session_id`: Session ID (new or existing)
+- `execution_time`: Execution time in seconds
+
+**Error Response:**
+```json
+{
+  "error": {
+    "message": "Code execution failed",
+    "code": "EXECUTION_ERROR",
+    "details": {
+      "traceback": "Traceback (most recent call last):\n..."
+    }
+  }
+}
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -267,7 +332,7 @@ const CodeExecutionTool = createCodeExecutionTool({
 ### Code Execution Flow
 
 1. Agent decides to use execute_code tool
-2. Code is sent to Code Runner API
+2. Code is sent to Code Runner API `/exec` endpoint
 3. Execution happens in sandboxed environment
 4. Outputs (stdout, stderr, files) are captured
 5. Results returned to LibreChat
@@ -450,6 +515,20 @@ curl -X GET https://api.librechat.ai/download/session_id/file_id \
 ```bash
 curl -X GET "https://api.librechat.ai/files/session_id?detail=summary" \
   -H "X-API-Key: your-api-key"
+```
+
+### Test Code Execution
+
+```bash
+curl -X POST https://api.librechat.ai/exec \
+  -H "X-API-Key: your-api-key" \
+  -H "User-Id: test-user" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "import pandas as pd\nprint(\"Hello from Code Runner!\")",
+    "session_id": "your-session-id",
+    "timeout": 30
+  }'
 ```
 
 ## OpenAPI Specification

@@ -218,6 +218,112 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /exec:
+    post:
+      operationId: executeCode
+      summary: Execute Python code
+      description: |
+        Executes Python code in a sandboxed environment. If a session_id is provided,
+        uploaded files will be available in the execution context at /mnt/data/.
+        Returns stdout, stderr, and any files generated during execution.
+      tags:
+        - Execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Python code to execute
+                  example: |
+                    import pandas as pd
+                    df = pd.read_csv('/mnt/data/data.csv')
+                    print(f"Shape: {df.shape}")
+                    df.head().to_csv('/mnt/data/output.csv')
+                session_id:
+                  type: string
+                  description: Optional session ID to access uploaded files
+                  example: "abc123def456"
+                timeout:
+                  type: integer
+                  description: Execution timeout in seconds (default varies by service)
+                  example: 30
+      responses:
+        '200':
+          description: Code executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success, error]
+                    description: Execution status
+                  stdout:
+                    type: string
+                    description: Standard output from code execution
+                    example: "Shape: (100, 5)\n"
+                  stderr:
+                    type: string
+                    description: Standard error from code execution
+                    example: ""
+                  files:
+                    type: array
+                    description: Files generated during execution
+                    items:
+                      type: object
+                      properties:
+                        fileId:
+                          type: string
+                          description: Unique identifier for the generated file
+                          example: "output123"
+                        filename:
+                          type: string
+                          description: Name of the generated file
+                          example: "output.csv"
+                        path:
+                          type: string
+                          description: Path where file was saved
+                          example: "/mnt/data/output.csv"
+                  session_id:
+                    type: string
+                    description: Session ID for the execution (new or existing)
+                    example: "abc123def456"
+                  execution_time:
+                    type: number
+                    description: Execution time in seconds
+                    example: 1.234
+        '400':
+          description: Bad request - invalid code or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '408':
+          description: Request timeout - code execution exceeded time limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error - code execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     Error:
@@ -263,4 +369,6 @@ security:
 tags:
   - name: Files
     description: File upload, download, and management operations for code execution sessions
+  - name: Execution
+    description: Python code execution operations
 
